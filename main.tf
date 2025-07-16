@@ -18,10 +18,20 @@ resource "aws_secretsmanager_secret" "sm" {
 }
 
 resource "aws_secretsmanager_secret_version" "sm-sv" {
-  for_each       = { for k, v in var.secrets : k => v if !var.unmanaged }
-  secret_id      = aws_secretsmanager_secret.sm[each.key].arn
-  secret_string  = lookup(each.value, "secret_string", null) != null ? lookup(each.value, "secret_string", null) : (lookup(each.value, "secret_key_value", null) != null ? jsonencode(lookup(each.value, "secret_key_value", {})) : null)
-  secret_binary  = lookup(each.value, "secret_binary", null) != null ? base64encode(lookup(each.value, "secret_binary")) : null
+  for_each  = { for k, v in var.secrets : k => v if !var.unmanaged }
+  secret_id = aws_secretsmanager_secret.sm[each.key].arn
+
+  # Regular parameters (when ephemeral is disabled)
+  secret_string = !var.ephemeral ? (lookup(each.value, "secret_string", null) != null ? lookup(each.value, "secret_string", null) : (lookup(each.value, "secret_key_value", null) != null ? jsonencode(lookup(each.value, "secret_key_value", {})) : null)) : null
+  secret_binary = !var.ephemeral ? (lookup(each.value, "secret_binary", null) != null ? base64encode(lookup(each.value, "secret_binary")) : null) : null
+
+  # Write-only parameters (when ephemeral is enabled)
+  # Note: Binary secrets are stored as base64-encoded strings when ephemeral is enabled
+  secret_string_wo = var.ephemeral ? (lookup(each.value, "secret_string", null) != null ? lookup(each.value, "secret_string", null) : (lookup(each.value, "secret_key_value", null) != null ? jsonencode(lookup(each.value, "secret_key_value", {})) : (lookup(each.value, "secret_binary", null) != null ? base64encode(lookup(each.value, "secret_binary")) : null))) : null
+
+  # Version parameters for write-only arguments
+  secret_string_wo_version = var.ephemeral ? each.value.secret_string_wo_version : null
+
   version_stages = var.version_stages
   depends_on     = [aws_secretsmanager_secret.sm]
   lifecycle {
@@ -32,10 +42,20 @@ resource "aws_secretsmanager_secret_version" "sm-sv" {
 }
 
 resource "aws_secretsmanager_secret_version" "sm-svu" {
-  for_each       = { for k, v in var.secrets : k => v if var.unmanaged }
-  secret_id      = aws_secretsmanager_secret.sm[each.key].arn
-  secret_string  = lookup(each.value, "secret_string", null) != null ? lookup(each.value, "secret_string") : (lookup(each.value, "secret_key_value", null) != null ? jsonencode(lookup(each.value, "secret_key_value", {})) : null)
-  secret_binary  = lookup(each.value, "secret_binary", null) != null ? base64encode(lookup(each.value, "secret_binary")) : null
+  for_each  = { for k, v in var.secrets : k => v if var.unmanaged }
+  secret_id = aws_secretsmanager_secret.sm[each.key].arn
+
+  # Regular parameters (when ephemeral is disabled)
+  secret_string = !var.ephemeral ? (lookup(each.value, "secret_string", null) != null ? lookup(each.value, "secret_string") : (lookup(each.value, "secret_key_value", null) != null ? jsonencode(lookup(each.value, "secret_key_value", {})) : null)) : null
+  secret_binary = !var.ephemeral ? (lookup(each.value, "secret_binary", null) != null ? base64encode(lookup(each.value, "secret_binary")) : null) : null
+
+  # Write-only parameters (when ephemeral is enabled)
+  # Note: Binary secrets are stored as base64-encoded strings when ephemeral is enabled
+  secret_string_wo = var.ephemeral ? (lookup(each.value, "secret_string", null) != null ? lookup(each.value, "secret_string") : (lookup(each.value, "secret_key_value", null) != null ? jsonencode(lookup(each.value, "secret_key_value", {})) : (lookup(each.value, "secret_binary", null) != null ? base64encode(lookup(each.value, "secret_binary")) : null))) : null
+
+  # Version parameters for write-only arguments
+  secret_string_wo_version = var.ephemeral ? each.value.secret_string_wo_version : null
+
   version_stages = var.version_stages
   depends_on     = [aws_secretsmanager_secret.sm]
 
@@ -43,6 +63,8 @@ resource "aws_secretsmanager_secret_version" "sm-svu" {
     ignore_changes = [
       secret_string,
       secret_binary,
+      secret_string_wo,
+      secret_string_wo_version,
       secret_id,
     ]
   }
@@ -62,10 +84,20 @@ resource "aws_secretsmanager_secret" "rsm" {
 }
 
 resource "aws_secretsmanager_secret_version" "rsm-sv" {
-  for_each       = { for k, v in var.rotate_secrets : k => v if !var.unmanaged }
-  secret_id      = aws_secretsmanager_secret.rsm[each.key].arn
-  secret_string  = lookup(each.value, "secret_string", null) != null ? lookup(each.value, "secret_string") : (lookup(each.value, "secret_key_value", null) != null ? jsonencode(lookup(each.value, "secret_key_value", {})) : null)
-  secret_binary  = lookup(each.value, "secret_binary", null) != null ? base64encode(lookup(each.value, "secret_binary")) : null
+  for_each  = { for k, v in var.rotate_secrets : k => v if !var.unmanaged }
+  secret_id = aws_secretsmanager_secret.rsm[each.key].arn
+
+  # Regular parameters (when ephemeral is disabled)
+  secret_string = !var.ephemeral ? (lookup(each.value, "secret_string", null) != null ? lookup(each.value, "secret_string") : (lookup(each.value, "secret_key_value", null) != null ? jsonencode(lookup(each.value, "secret_key_value", {})) : null)) : null
+  secret_binary = !var.ephemeral ? (lookup(each.value, "secret_binary", null) != null ? base64encode(lookup(each.value, "secret_binary")) : null) : null
+
+  # Write-only parameters (when ephemeral is enabled)
+  # Note: Binary secrets are stored as base64-encoded strings when ephemeral is enabled
+  secret_string_wo = var.ephemeral ? (lookup(each.value, "secret_string", null) != null ? lookup(each.value, "secret_string") : (lookup(each.value, "secret_key_value", null) != null ? jsonencode(lookup(each.value, "secret_key_value", {})) : (lookup(each.value, "secret_binary", null) != null ? base64encode(lookup(each.value, "secret_binary")) : null))) : null
+
+  # Version parameters for write-only arguments
+  secret_string_wo_version = var.ephemeral ? each.value.secret_string_wo_version : null
+
   version_stages = var.version_stages
   depends_on     = [aws_secretsmanager_secret.rsm]
   lifecycle {
@@ -76,10 +108,20 @@ resource "aws_secretsmanager_secret_version" "rsm-sv" {
 }
 
 resource "aws_secretsmanager_secret_version" "rsm-svu" {
-  for_each       = { for k, v in var.rotate_secrets : k => v if var.unmanaged }
-  secret_id      = aws_secretsmanager_secret.rsm[each.key].arn
-  secret_string  = lookup(each.value, "secret_string", null) != null ? lookup(each.value, "secret_string") : (lookup(each.value, "secret_key_value", null) != null ? jsonencode(lookup(each.value, "secret_key_value", {})) : null)
-  secret_binary  = lookup(each.value, "secret_binary", null) != null ? base64encode(lookup(each.value, "secret_binary")) : null
+  for_each  = { for k, v in var.rotate_secrets : k => v if var.unmanaged }
+  secret_id = aws_secretsmanager_secret.rsm[each.key].arn
+
+  # Regular parameters (when ephemeral is disabled)
+  secret_string = !var.ephemeral ? (lookup(each.value, "secret_string", null) != null ? lookup(each.value, "secret_string") : (lookup(each.value, "secret_key_value", null) != null ? jsonencode(lookup(each.value, "secret_key_value", {})) : null)) : null
+  secret_binary = !var.ephemeral ? (lookup(each.value, "secret_binary", null) != null ? base64encode(lookup(each.value, "secret_binary")) : null) : null
+
+  # Write-only parameters (when ephemeral is enabled)
+  # Note: Binary secrets are stored as base64-encoded strings when ephemeral is enabled
+  secret_string_wo = var.ephemeral ? (lookup(each.value, "secret_string", null) != null ? lookup(each.value, "secret_string") : (lookup(each.value, "secret_key_value", null) != null ? jsonencode(lookup(each.value, "secret_key_value", {})) : (lookup(each.value, "secret_binary", null) != null ? base64encode(lookup(each.value, "secret_binary")) : null))) : null
+
+  # Version parameters for write-only arguments
+  secret_string_wo_version = var.ephemeral ? each.value.secret_string_wo_version : null
+
   version_stages = var.version_stages
   depends_on     = [aws_secretsmanager_secret.rsm]
 
@@ -87,6 +129,8 @@ resource "aws_secretsmanager_secret_version" "rsm-svu" {
     ignore_changes = [
       secret_string,
       secret_binary,
+      secret_string_wo,
+      secret_string_wo_version,
       secret_id,
     ]
   }
