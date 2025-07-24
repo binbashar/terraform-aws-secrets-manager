@@ -10,11 +10,6 @@ This document outlines Terraform-specific development guidelines for the terrafo
 - **variables.tf** - Input variable definitions with validation
 - **outputs.tf** - Output value definitions  
 - **versions.tf** - Provider version constraints
-- **iam.tf** - IAM roles and policies (for secret access)
-- **notifications.tf** - SNS and notification configurations
-- **rotation.tf** - Secret rotation configurations
-- **replica.tf** - Cross-region replication configurations
-- **policy.tf** - Resource-based policy configurations
 
 ### Code Organization Principles
 - Group related resources logically in separate files
@@ -440,12 +435,7 @@ resource "aws_secretsmanager_secret_replica" "this" {
   secret_id = aws_secretsmanager_secret.this[each.value.secret_name].id
   region    = each.value.region
   
-  dynamic "kms_key_id" {
-    for_each = each.value.kms_key_id != null ? [1] : []
-    content {
-      kms_key_id = each.value.kms_key_id
-    }
-  }
+  kms_key_id = try(each.value.kms_key_id, null)
 }
 ```
 

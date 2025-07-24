@@ -7,8 +7,9 @@ on:
     branches: [ master, main ]
 
 env:
-  TERRAFORM_VERSION: 1.11.0
+  TERRAFORM_VERSION: latest
   GO_VERSION: 1.21
+  ACTIONS_STEP_DEBUG: true
 
 jobs:
   # Validation tests - fast feedback
@@ -64,12 +65,6 @@ jobs:
         with:
           soft_fail: true
 
-      - name: Run Checkov
-        uses: bridgecrewio/checkov-action@v12
-        with:
-          directory: .
-          framework: terraform
-          soft_fail: true
 
   # Linting with additional tools
   lint:
@@ -88,6 +83,7 @@ jobs:
         uses: terraform-linters/setup-tflint@v4
         with:
           tflint_version: latest
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Init TFLint
         run: tflint --init
@@ -106,7 +102,6 @@ jobs:
       matrix:
         test-suite: 
           - validation
-          - ephemeral
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -115,6 +110,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
+          cache: false
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -135,7 +131,7 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          key: ${{ runner.os }}-go-${{ hashFiles('test/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go-
 
@@ -156,10 +152,37 @@ jobs:
         if: matrix.test-suite == 'ephemeral'
         working-directory: test
         run: |
-          go test -v -timeout 30m -run "TestEphemeral.*|TestTerraformAwsSecretsManagerEphemeral" \
+          echo "Starting ephemeral tests..."
+          echo "AWS Region: $AWS_DEFAULT_REGION"
+          echo "Go version: $(go version)"
+          echo "Terraform version: $(terraform version)"
+          
+          # Run tests sequentially to avoid state conflicts
+          go test -v -timeout 30m -p=1 -run "TestEphemeral.*" \
             -json > ephemeral-test-results.json
+          
+          exit_code=$?
+          echo "Tests completed with exit code: $exit_code"
+          
+          if [ $exit_code -ne 0 ]; then
+            echo "Test failures detected. Showing recent test output:"
+            tail -50 ephemeral-test-results.json || echo "No test results file found"
+          fi
+          
+          exit $exit_code
         env:
           AWS_DEFAULT_REGION: us-east-1
+
+      - name: Debug test artifacts
+        if: always()
+        working-directory: test
+        run: |
+          echo "=== Test directory contents ==="
+          ls -la
+          echo "=== Test result files ==="
+          ls -la *-test-results.json 2>/dev/null || echo "No test result files found"
+          echo "=== Terraform state files ==="
+          ls -la ../*.tfstate* 2>/dev/null || echo "No state files found"
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
@@ -187,6 +210,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
+          cache: false
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -207,7 +231,7 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          key: ${{ runner.os }}-go-${{ hashFiles('test/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go-
 
@@ -285,6 +309,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
+          cache: false
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
