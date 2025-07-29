@@ -206,6 +206,84 @@ module "secrets-manager-replication" {
   }
 }
 ```
+
+### Lifecycle Configuration
+
+If you need to configure lifecycle rules for your secrets (such as `prevent_destroy`, `create_before_destroy`, or `ignore_changes`), you must configure them on individual resources since lifecycle blocks cannot be used with module calls.
+
+Here are the recommended approaches:
+
+#### Option 1: Create secrets directly with lifecycle rules
+
+```hcl
+# Create secret directly with lifecycle protection
+resource "aws_secretsmanager_secret" "critical_secret" {
+  name        = "critical-database-password"
+  description = "Critical database password - protected from accidental deletion"
+
+  lifecycle {
+    prevent_destroy = true
+  }
+
+  tags = {
+    Environment = "production"
+    Critical    = "true"
+  }
+}
+
+resource "aws_secretsmanager_secret_version" "critical_secret_version" {
+  secret_id     = aws_secretsmanager_secret.critical_secret.id
+  secret_string = "super-secret-password"
+
+  lifecycle {
+    ignore_changes = [secret_string]
+  }
+}
+```
+
+#### Option 2: Use module alongside protected resources
+
+```hcl
+# Use module for convenience, then protect specific secrets separately
+module "secrets-manager" {
+  source = "lgallard/secrets-manager/aws"
+
+  secrets = {
+    app-config = {
+      description   = "Application configuration"
+      secret_string = "app-configuration-data"
+    }
+  }
+}
+
+# Create additional protected secret with lifecycle rules
+resource "aws_secretsmanager_secret" "protected_secret" {
+  name        = "critical-database-password"
+  description = "Critical database password - protected from accidental deletion"
+
+  lifecycle {
+    prevent_destroy       = true
+    create_before_destroy = true
+  }
+
+  tags = {
+    Environment = "production"
+    Critical    = "true"
+  }
+}
+
+resource "aws_secretsmanager_secret_version" "protected_version" {
+  secret_id     = aws_secretsmanager_secret.protected_secret.id
+  secret_string = "super-secret-password"
+
+  lifecycle {
+    ignore_changes = [secret_string]
+  }
+}
+```
+
+This approach follows Terraform's requirement that lifecycle blocks only contain literal values and can only be used on resource blocks, not module calls.
+
 ## Secrets Rotation
 
 If you need to rotate your secrets, use `rotate_secrets` map to define them. The lambda function must exist and have the right permissions to rotate secrets in AWS Secrets Manager:
